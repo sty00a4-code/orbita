@@ -1,0 +1,15 @@
+[package]
+name = "orbita"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hecs = "0.11.0"
+raylib = "5.5.1"
+
+[profile.release]
+codegen-units = 1
+lto = false
+opt-level = "s"
+panic = "abort"
+strip = "symbols"
