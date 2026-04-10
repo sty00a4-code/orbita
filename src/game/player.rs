@@ -31,7 +31,13 @@ impl Player {
             camera.target = target
                 - Vector2::new(rl.get_screen_width() as f32, rl.get_screen_height() as f32)
                     / 2.0
-                    / camera.zoom
+                    / camera.zoom;
+            let d = rl.get_mouse_wheel_move();
+            if d > 0.0 {
+                camera.zoom *= 2.0;
+            } else if d < 0.0 {
+                camera.zoom *= 0.5;
+            }
         }
         {
             for (player, body) in engine.world.query_mut::<(&Player, &mut Body)>() {
@@ -39,7 +45,7 @@ impl Player {
                 if rl.is_key_down(KeyboardKey::KEY_W) {
                     let direction =
                         Vector2::new(body.rot.to_radians().cos(), body.rot.to_radians().sin());
-                    acc += direction * 500.0;
+                    acc += direction * 1000.0;
                 }
                 if rl.is_key_down(KeyboardKey::KEY_D) {
                     body.torque += 300.0 * dt;

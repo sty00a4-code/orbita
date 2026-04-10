@@ -98,6 +98,8 @@ impl Body {
     }
     #[inline(always)]
     pub fn update(engine: &mut Engine, _: (&mut RaylibHandle, &mut RaylibThread), dt: f32) {
+        const G: f32 = 10000000.0; // gravitational constant (scaled for gameplay)
+
         let mut snaps = vec![];
         for (e, body) in engine.world.query_mut::<(Entity, &mut Body)>() {
             snaps.push((e, body));
@@ -109,11 +111,25 @@ impl Body {
                 let (_e_a, a) = &mut left[i];
                 let (_e_b, b) = &mut right[0];
 
+                // Apply gravitational attraction
+                let delta = a.pos - b.pos;
+                let dist = delta.length().max(0.001) * 0.5; // prevent division by zero at very close range
+                let dist_sq = dist * dist;
+
+                // F = G * (m1 * m2) / r²
+                let force_magnitude = G * (a.properties.mass * b.properties.mass) / dist_sq;
+                let direction = delta / dist;
+                let force = -direction * force_magnitude;
+
+                // Apply force as acceleration: a = F / m
+                a.vel += force / a.properties.mass * dt;
+                b.vel -= force / b.properties.mass * dt;
+
                 if let (CollisionShape::Circle(rad_a), CollisionShape::Circle(rad_b)) =
                     (&a.shape, &b.shape)
                 {
                     let delta = b.pos - a.pos;
-                    let dist = delta.length().max(0.0001);
+                    let dist = delta.length().clamp(0.0001, 50000.0);
                     let penetration = rad_a + rad_b - dist;
                     if penetration <= 0.0 {
                         continue;
@@ -122,17 +138,28 @@ impl Body {
                     let normal = delta / dist;
                     let rel_vel = b.vel - a.vel;
                     let vel_along = rel_vel.dot(normal);
+                    let inv_mass_a = 1.0 / a.properties.mass.max(0.0001);
+                    let inv_mass_b = 1.0 / b.properties.mass.max(0.0001);
+                    let restitution = 0.2; // 1.0 perfectly elastic, <1 for energy loss
+                    let j = -(1.0 + restitution) * vel_along / (inv_mass_a + inv_mass_b);
                     if vel_along > 0.0 {
                         // moving apart
                     } else {
-                        let inv_mass_a = 1.0 / a.properties.mass.max(0.0001);
-                        let inv_mass_b = 1.0 / b.properties.mass.max(0.0001);
-                        let restitution = 0.9; // 1.0 perfectly elastic, <1 for energy loss
-                        let j = -(1.0 + restitution) * vel_along / (inv_mass_a + inv_mass_b);
                         let impulse = normal * j;
                         a.vel -= impulse * inv_mass_a;
                         b.vel += impulse * inv_mass_b;
                     }
+
+                    // Apply friction tangential to collision (always when in contact)
+                    let tangent = Vector2::new(-normal.y, normal.x);
+                    let vel_along_tangent = rel_vel.dot(tangent);
+                    let friction_coeff = 0.1;
+                    let max_friction = (j.abs()) * friction_coeff;
+                    let friction_j = vel_along_tangent / (inv_mass_a + inv_mass_b);
+                    let friction_j = friction_j.max(-max_friction).min(max_friction);
+                    let friction_impulse = tangent * friction_j;
+                    a.vel -= friction_impulse * inv_mass_a;
+                    b.vel += friction_impulse * inv_mass_b;
 
                     // penetration correction (prevent sinking)
                     let inv_mass_a = 1.0 / a.properties.mass.max(0.0001);
@@ -154,23 +181,23 @@ impl Body {
     }
     #[inline(always)]
     pub fn draw(engine: &mut Engine, (d, _): (&mut RaylibDrawHandle, &mut RaylibThread)) {
-        for body in engine.world.query_mut::<&mut Body>() {
-            match body.shape {
-                CollisionShape::Rect(size) => {
-                    d.draw_rectangle_lines(
-                        body.pos.x as i32,
-                        body.pos.y as i32,
-                        size.x as i32,
-                        size.y as i32,
-                        Color::WHITE,
-                    );
-                }
-                CollisionShape::Circle(rad) => {
-                    d.draw_circle_lines_v(body.pos, rad, Color::WHITE);
-                }
-            }
-            d.draw_line_v(body.pos, body.pos + body.vel * 0.1, Color::GREEN);
-        }
+        // for body in engine.world.query_mut::<&mut Body>() {
+        //     match body.shape {
+        //         CollisionShape::Rect(size) => {
+        //             d.draw_rectangle_lines(
+        //                 body.pos.x as i32,
+        //                 body.pos.y as i32,
+        //                 size.x as i32,
+        //                 size.y as i32,
+        //                 Color::WHITE,
+        //             );
+        //         }
+        //         CollisionShape::Circle(rad) => {
+        //             d.draw_circle_lines_v(body.pos, rad, Color::WHITE);
+        //         }
+        //     }
+        //     d.draw_line_v(body.pos, body.pos + body.vel * 0.1, Color::GREEN);
+        // }
     }
 }
 
